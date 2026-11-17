@@ -534,3 +534,82 @@ targetN 优先级：手工指定 > 模型 > 规则解析的 n > 默认值
 
 改任何特征名或哈希都要**重新训练**并替换 `range-weights.json`，否则权重错位，
 准确率会静默掉到随机水平。
+
+## 13. 多仓库结构（2026-11-17 重构）
+
+**每个插件一个独立 Git 仓库**，主仓库只放部署编排。以后开发新插件**不要**堆进主仓库。
+
+### 三个仓库
+
+| 目录 | GitHub | 内容 |
+| --- | --- | --- |
+| `.`（主仓库） | `JiangWanZhengChouYv/riveroj` | Docker 编排、镜像、judge 健康检查、模型训练脚本 |
+| `addons/luogu-import` | `JiangWanZhengChouYv/hydro-addon-luogu-import` | 洛谷拉题 / 提交 / 反算 |
+| `addons/riveroj-brand` | `JiangWanZhengChouYv/hydro-addon-riveroj-brand` | 站点图标与顶栏 logo |
+
+三个都是 Public，各自 `main` 分支、各自 `.git`。
+
+**主仓库 `.gitignore` 里有 `addons/*/`**，所以主仓库根本不跟踪插件源码；
+插件仓库也不会把主仓库的部署文件带进去。两边互不干扰。
+
+### RiverOJ 自动安装全部插件
+
+`backend/entrypoint.sh` 已改为**扫描 `addons/` 目录**：
+
+- 只要子目录里有 `package.json` 就注册进 `addon.json`
+- 跳过隐藏目录、`node_modules`、无 `package.json` 的目录
+- 保留 `addon.json` 里原有的非本地条目（比如 npm 装的插件）
+- 纯 shell 实现（grep/awk），不依赖 python3/node
+
+**所以新增插件不需要改任何代码**：把目录放进 `addons/` → `docker compose restart oj-backend` 即可。
+
+实测：放 3 个插件目录（含 1 个空目录）→ 空的被跳过，3 个都被注册。
+
+### 新建插件的完整流程
+
+```bash
+cd addons
+mkdir my-addon && cd my-addon
+git init -b main
+# 写 package.json + index.ts + README（必须含「仅供个人学习使用」声明）
+gh repo create hydro-addon-my-addon --public --source=. --remote=origin --push
+cd ../.. && docker compose restart oj-backend
+```
+
+命名规范与必读坑位见 `CONTRIBUTING-ADDONS.md`。
+
+### 「仅供个人学习使用」声明
+
+**每个插件的 README 开头必须有这段**（主仓库 README 也有）：
+
+```markdown
+> ## ⚠️ 仅供个人学习使用
+>
+> 本项目仅供个人学习与技术研究，不得用于任何商业用途或对外提供服务。
+> 使用本项目产生的任何后果由使用者自行承担。
+> 本项目与相关平台官方无任何关联，未获其授权或认可。
+```
+
+`luogu-import` 的声明额外写明：访问洛谷可能违反其服务条款、题面版权归原作者、
+因使用导致的限流/封禁由使用者自行承担。
+
+### 仓库操作速查
+
+```bash
+# 查看三处状态
+cd /Users/markzhang/Documents/Hydro-Dev && git status --short
+cd addons/luogu-import && git status --short
+cd addons/riveroj-brand && git status --short
+
+# 推送某个插件
+cd addons/luogu-import && git add -A && git commit -m "..." && git push
+
+# 主仓库（部署改动）
+cd /Users/markzhang/Documents/Hydro-Dev && git add -A && git commit -m "..." && git push
+```
+
+### 注意
+
+- 主仓库**不要** `git add addons/luogu-import`（会被忽略，但也别强行 `-f`）
+- 插件仓库**不要**提交 `data/`、密钥、日志
+- `tools/range-model/` 属于主仓库（模型训练脚本，与具体插件解耦）
