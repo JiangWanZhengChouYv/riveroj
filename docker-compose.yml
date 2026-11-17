@@ -1,0 +1,61 @@
+name: hydro-dev
+
+services:
+  # Warning: mongodb here is not password-protected.
+  # DO NOT EXPOSE THIS SERVICE TO THE PUBLIC.
+  oj-mongo:
+    image: mongo:4.4
+    container_name: dev-oj-mongo
+    restart: always
+    volumes:
+      - ./data/mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  oj-backend:
+    build: ./backend
+    image: hydro-dev-backend:latest
+    container_name: dev-oj-backend
+    restart: always
+    depends_on:
+      oj-mongo:
+        condition: service_healthy
+    volumes:
+      - ./data/file:/data/file
+      - ./data/backend:/root/.hydro
+      - ./public:/root/public
+      - ./addons:/root/.hydro/addons:ro
+    ports:
+      - "0.0.0.0:8889:8888"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8888/status', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  oj-judge:
+    image: hydro-dev-judge:latest
+    container_name: dev-oj-judge
+    restart: always
+    privileged: true
+    depends_on:
+      oj-backend:
+        condition: service_healthy
+    volumes:
+      - ./data/judge:/root/.config/hydro
+      - ./scripts/judge-healthcheck.js:/root/judge-healthcheck.js:ro
+    healthcheck:
+      # 脚本退出码：0 健康；1 backend 暂不可用（只标记 unhealthy）；2 judge 断连
+      # 断连时脚本会杀掉 PM2 管理的 hydrojudge 子进程，由 PM2 自动重启并连回 backend
+      # （容器内 PID 1 受内核保护，杀 PID 1 无效，故不走 restart: always）。
+      test: ["CMD", "node", "/root/judge-healthcheck.js"]
+      interval: 10s
+      timeout: 6s
+      retries: 2
+      start_period: 60s
+    shm_size: '2gb'
