@@ -681,3 +681,58 @@ CF 下填 **`cf-connecting-ip`**，不是 `x-forwarded-for`。
   或继续递增 `?v=N`。
 - **CF 免费版请求体上限 100 MB**，而 `server.upload=256m`：大测试点包会 413 且边缘报错、
   Hydro 日志看不到。大包改本地 `hydrooj cli problem upload`。
+
+## 15. 在线编程「自测 / 评测记录」面板空白（2026-11-17 排查）
+
+用户报「自测和评测记录都不显示了」。实测是**两个互不相干的问题**，都不是插件把功能删掉了。
+
+### A. 评测记录：upstream 的 toggle 不回填（真 bug，已修）
+
+复现：进入在线编程时「评测记录」是收起的（`localStorage['scratchpad/records'] === 'false'`），
+之后再点开 → 面板正常展开（高度 268）、按钮变 `activated`，但 tbody 永远是空的，
+**且不发任何请求**。
+
+根因在 `@hydrooj/ui-default@4.59.1`（`2030.*.chunk.js` + `9900.*.chunk.js`）：
+
+```js
+// 2030: 初始 visible 只读一次 localStorage
+records: { visible: UiContext.canViewRecord && localStorage.getItem('scratchpad/records') === 'true' }
+
+// 9900: 数据只在挂载时拉一次
+componentDidMount() { this.props.recordsVisible && this.props.loadSubmissions() }
+
+// 2030: toggle 只翻转 visible 并写回 localStorage，从不重新拉取
+case 'SCRATCHPAD_UI_TOGGLE_VISIBILITY':
+  return localStorage.setItem(`scratchpad/${r}`, (!t[r].visible).toString()),
+         { ...t, [r]: { ...t[r], visible: !t[r].visible } }
+```
+
+所以 `visible` 从 false → true 时没有任何请求。reducer 收到 `FULFILLED` 后是
+`rows: map(rdocs,'_id')`，逻辑本身没错，只是永远没人 dispatch。
+
+**修法**（`templates/partials/luogu_scratchpad.html` 的 `fillNativeRecords()`）：
+面板展开且 tbody 连续 3 次（约 1.5s）为空时，自己取一次 `UiContext.getSubmissionsUrl`
+并按原生行结构渲染。两个要点：
+1. **必须延迟 1.5s**。挂载时 `records.visible=true` 的情况 native 会在几百毫秒内填好行，
+   立刻补会插出**重复行**（第一版没延迟，实测出现两条一模一样的 `AC: 10`）。
+2. 补之前和插入前都检查 `body.children.length`，native 已填就不动手。
+
+### B. 自测：本来就是空的，不是 bug
+
+「自测」面板只有一个 placeholder 为「输入」的 textarea，**不预填样例**，
+要自己粘贴数据再按 F9。用户以为的「有内容」是之前手动填过。
+实测填入 P1004 样例后点「运行自测」→ `Accepted 0.74ms 10980KiB 81`，功能完好。
+
+### C. 排查中被带偏的坑：布局塌陷
+
+反复 `location.reload()` 之后，这个标签页的 allotment 布局会崩：所有
+`.split-view-view` 的 `height` 都是 0、`top` 全是 45、`.sash` 数量为 0、
+且都丢了 `split-view-view-visible` 类。此时**任何面板都不显示**，
+看起来就像「功能没了」，但开一个**新窗口**就恢复正常。
+诊断时先查 `document.querySelectorAll('.sash').length`——为 0 就是布局没初始化，
+换窗口/换标签页重开，别在坏页面上继续找数据问题。
+
+### 字段名（补行时用）
+
+`/record?fullStatus=true&pid=<docId>` 返回的 `rdocs[]` 里是 **`memory`（KB）/ `time`（ms）**，
+不是 `memoryKb` / `timeMs`。用错字段会渲染成 `-`。
