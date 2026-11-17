@@ -22,7 +22,8 @@ Hydro-Dev/                     ← 你在这里
 │   ├── luogu-import/          → luogu-import
 │   └── riveroj-brand/         → hydro-addon-riveroj-brand
 ├── tools/range-model/         数据范围识别模型的训练脚本
-├── AGENTS.md                  项目现状、计划、坑位（给后续 AGENTS 看）
+├── AGENTS.md                  项目简介 + 已完成事项（给后续 AGENTS 看）
+├── docs/DEVLOG.md             完整开发日志、验收记录与踩坑清单
 └── CONTRIBUTING-ADDONS.md     插件开发约定
 ```
 
@@ -78,6 +79,7 @@ cd ../.. && docker compose restart oj-backend   # 自动注册，无需改代码
 
 ## 文档
 
-- [`AGENTS.md`](AGENTS.md)：项目全貌、已完成功能、踩过的坑（篇幅较长但信息密度高）
+- [`AGENTS.md`](AGENTS.md)：项目简介与已完成的 10 件事，新 AGENTS 从这里开始
+- [`docs/DEVLOG.md`](docs/DEVLOG.md)：完整开发日志与踩坑清单，改代码前按主题搜这里
 - [`CONTRIBUTING-ADDONS.md`](CONTRIBUTING-ADDONS.md)：插件开发约定与命名规范
 - [`tools/range-model/README.md`](tools/range-model/README.md)：范围识别模型的训练流程
