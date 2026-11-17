@@ -613,3 +613,64 @@ cd /Users/markzhang/Documents/Hydro-Dev && git add -A && git commit -m "..." && 
 - 主仓库**不要** `git add addons/luogu-import`（会被忽略，但也别强行 `-f`）
 - 插件仓库**不要**提交 `data/`、密钥、日志
 - `tools/range-model/` 属于主仓库（模型训练脚本，与具体插件解耦）
+
+## 14. 公网访问：Cloudflare Tunnel + 缓存（2026-11-17 配置并实测）
+
+站点公网地址 **https://oj.mz0520.de5.net**（zone `mz0520.de5.net`，Free，zone id `875aba9ba064027303316c9aca835de6`）。
+
+```
+浏览器 → CF 边缘 → Tunnel 29664482-170c-4265-81ca-9e72332f2562 → 127.0.0.1:8889
+```
+
+Tunnel 已常驻（`~/.cloudflared/config.yml`，`oj.` / `dl.` 两个 ingress 都指向本机），不用开端口、不用公网 IP。
+
+### 后端设置
+
+```bash
+docker exec dev-oj-backend hydrooj cli system set server.xff cf-connecting-ip
+docker compose restart oj-backend
+```
+
+`server.ts` 里 `proxy = !!server.xproxy || !!server.xff`；`framework/base.ts` 用 `headers[xff] || ctx.request.ip`。
+CF 下填 **`cf-connecting-ip`**，不是 `x-forwarded-for`。
+
+副作用（已实测）：CF 侧 cookie 变 `Secure`；**本地 127.0.0.1:8889 登录不受影响**——
+`service/layers/base.ts` 里 `secure` 只在 `session.domain` 有值且 host 匹配时才设，本实例没配该键。
+
+### Cache Rules（zone 级 4 条，按序命中）
+
+`PUT /zones/<id>/rulesets/phases/http_request_cache_settings/entrypoint`
+
+| # | 条件 | 动作 |
+| --- | --- | --- |
+| R1 | `not`（路径以 css/js/png/ico/svg/jpg/jpeg/gif/webp/woff2/woff/ttf/eot 结尾） | cache=false |
+| R2 | `/resource/*`、`/theme-*.css`、`/hydro-*.js`、含 `.chunk.js` | cache=true，edge+browser 1 年 |
+| R3 | R1 反向的静态扩展名，排除 `service-worker.js` | cache=true，edge 7 天，browser 尊重源站 |
+| R4 | `/service-worker.js` | cache=false |
+
+**R1 是安全底线**：任何非静态路径一律不缓存，将来即使有人开 Cache Everything 也不会把登录页
+缓存给别人（Hydro 按登录态渲染、CSRF 只校验 Referer 域名，串号即会话泄露）。
+
+### zone 其它设置
+
+`always_use_https=on`、`min_tls_version=1.2`、`brotli=on`、`http3/tls_1_3=on`；
+`rocket_loader` **off**、`minify` 全 **off**（会弄坏 React/Monaco）；`cache_level=aggressive`
+（= Standard，**不是** Cache Everything，query 进 cache key，`?v=2` 有效）。
+改动前全套备份在 `cf-zone-settings-backup.json`（已 gitignore）。
+
+### 实测（2026-11-17）
+
+匿名 `/`、`/p/P1001`、`/login` 全 `DYNAMIC`；`/theme-4.59.1.css`、`/favicon.ico` 全 `HIT`。
+登录态 `/`、`/p/P1001`、`/ranking`、`/status`、`/user/2`、`/record` 全 `DYNAMIC`（正文含用户名）。
+插件经公网正常：`/manage/luogu` 200、`/manage/luogu/config` 返回脱敏信息、评测机 Online。
+
+### 坑位
+
+- **CF dashboard 的 `/api/v4` 写操作要带 `X-Cross-Site-Security: dash`**，否则 403 + HTML
+  "Attention Required!"（像 WAF/权限问题，实则缺这个头）。读操作不需要。
+- 本站 `rewrite_response_headers` **不可用**（`unknown variant for action`），没法用 Transform Rule
+  强加 `no-store`，改由 R1 从请求侧兜底。
+- 换 favicon / 顶栏 logo 这种**文件名不变**的资源必须 `POST /zones/<id>/purge_cache`
+  或继续递增 `?v=N`。
+- **CF 免费版请求体上限 100 MB**，而 `server.upload=256m`：大测试点包会 413 且边缘报错、
+  Hydro 日志看不到。大包改本地 `hydrooj cli problem upload`。

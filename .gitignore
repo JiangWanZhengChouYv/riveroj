@@ -10,3 +10,6 @@ addons/*/
 
 # 本机工具缓存
 .workbuddy/
+
+# Cloudflare
+cf-zone-settings-backup.json
