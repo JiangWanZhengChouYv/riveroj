@@ -544,7 +544,7 @@ targetN 优先级：手工指定 > 模型 > 规则解析的 n > 默认值
 | 目录 | GitHub | 内容 |
 | --- | --- | --- |
 | `.`（主仓库） | `JiangWanZhengChouYv/riveroj` | Docker 编排、镜像、judge 健康检查、模型训练脚本 |
-| `addons/luogu-import` | `JiangWanZhengChouYv/hydro-addon-luogu-import` | 洛谷拉题 / 提交 / 反算 |
+| `addons/luogu-import` | `JiangWanZhengChouYv/luogu-import`（v1.1.0 已发 Release） | 洛谷拉题 / 提交 / 反算 |
 | `addons/riveroj-brand` | `JiangWanZhengChouYv/hydro-addon-riveroj-brand` | 站点图标与顶栏 logo |
 
 三个都是 Public，各自 `main` 分支、各自 `.git`。

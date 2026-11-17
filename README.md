@@ -19,7 +19,7 @@ Hydro-Dev/                     ← 你在这里
 ├── judge/                     评测机镜像
 ├── scripts/                   judge 健康检查
 ├── addons/                    ★ 每个子目录是一个独立的 Git 仓库
-│   ├── luogu-import/          → hydro-addon-luogu-import
+│   ├── luogu-import/          → luogu-import
 │   └── riveroj-brand/         → hydro-addon-riveroj-brand
 ├── tools/range-model/         数据范围识别模型的训练脚本
 ├── AGENTS.md                  项目现状、计划、坑位（给后续 AGENTS 看）
@@ -32,7 +32,7 @@ Hydro-Dev/                     ← 你在这里
 
 | 插件 | 仓库 | 说明 |
 | --- | --- | --- |
-| `luogu-import` | [hydro-addon-luogu-import](https://github.com/JiangWanZhengChouYv/hydro-addon-luogu-import) | 洛谷拉题 / 提交 / 反算极限测试点，含中英双语范围识别模型 |
+| `luogu-import` | [luogu-import](https://github.com/JiangWanZhengChouYv/luogu-import) | 洛谷拉题 / 提交 / 反算极限测试点，含中英双语范围识别模型 |
 | `riveroj-brand` | [hydro-addon-riveroj-brand](https://github.com/JiangWanZhengChouYv/hydro-addon-riveroj-brand) | RiverOJ 图标与顶栏 logo |
 
 **RiverOJ 会自动安装 `addons/` 下的全部插件**：容器启动时扫描该目录，

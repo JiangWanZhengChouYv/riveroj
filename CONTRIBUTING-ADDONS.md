@@ -9,7 +9,7 @@ Hydro-Dev/                      ← 主仓库（本目录，仅放部署编排�
 ├── docker-compose.yml
 ├── backend/  judge/  scripts/
 ├── addons/                     ← ★ 每个子目录是一个独立 Git 仓库
-│   ├── luogu-import/           → github.com/<you>/hydro-addon-luogu-import
+│   ├── luogu-import/           → github.com/<you>/luogu-import
 │   ├── riveroj-brand/          → github.com/<you>/hydro-addon-riveroj-brand
 │   └── <新插件>/               → github.com/<you>/hydro-addon-<name>
 └── tools/                      ← 工具与训练脚本（可独立成仓库）
@@ -107,5 +107,5 @@ git grep -nE "luogu\.cn/user/[0-9]+|__client_id=[A-Za-z0-9]|Hydro123|Hydro7890" 
 
 | 插件 | 仓库 | 说明 |
 | --- | --- | --- |
-| `luogu-import` | `hydro-addon-luogu-import` | 洛谷拉题 / 提交 / 反算，含中英范围识别模型 |
+| `luogu-import` | `luogu-import` | 洛谷拉题 / 提交 / 反算，含中英范围识别模型 |
 | `riveroj-brand` | `hydro-addon-riveroj-brand` | RiverOJ 图标与顶栏 logo |
