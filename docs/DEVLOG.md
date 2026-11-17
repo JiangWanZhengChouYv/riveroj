@@ -784,3 +784,37 @@ StorageService / _`，5.0.7 全部具备。
 
 v1.1.2 已发布，附 `luogu-import-1.1.2.tar.gz`（95326 B，28 个文件，已排除 `.git`）。
 打包命令必须带 `--exclude='.git' --exclude='node_modules'`，否则会打进整个仓库（v1.1.0/v1.1.1 犯过）。
+
+### 16.1 分发前审计（v1.1.3，2026-11-17 追加）
+
+第一轮只测了「能不能跑起来」，第二轮专门找「会不会弄坏别人站点」，又抓到两个：
+
+**A. 前缀判断把本站自带题当成洛谷题。**
+`handler/create` 用 `looksLikeLuoguPid`（`^P|B|CF|SP|AT|UVA + 字母数字`）兜底，
+而 Hydro 自带的演示题就叫 `P1000`。后果：新装站点上 `P1000` 题目页出现
+「提交到 Luogu」按钮 + 在线编程按钮，而且**真能提交到洛谷**。
+
+改为只认 `luogu.problems` 登记。因为渲染在 `handler/create` 阶段拿不到 DB，
+启动时把标记预加载进内存 Set（实测 18653 条），导入成功时同步写入。
+`isLuoguProblem`（异步，提交入口用）一并改成标记优先。
+逃生口 `luogu-import.pidPrefixFallback`：默认 false，且只在标记表为空时生效。
+
+实测：`P1003` 6 处入口正常；人为造未登记的 `P999999` → 0 处入口、提交接口 403。
+
+**B. 密钥路径写死 `/root/.hydro/luogu.key`。**
+非 root / 非 Docker 安装时目录不存在，`writeFileSync` 抛 ENOENT 且不是 EEXIST
+→ **保存洛谷凭据直接失败**（不是静默失败，是抛异常）。
+改为 `LUOGU_KEY_FILE` → `$HYDRO_HOME` → `~/.hydro` 依次解析 + 自动 mkdir。
+
+### 16.2 兼容性边界（写进 CHANGELOG 和 README，别对使用者含糊）
+
+已验证：Hydro 5.0.7 / 5.1.0，`@hydrooj/ui-default` 4.58.5 / 4.59.1，Docker，单域。
+
+未验证（要如实说）：其他 ui-default 版本（4.58.0–4.58.4、4.59.0、未来版本）、
+非 Docker 部署、多域站点、中英文之外的 locale；
+以及「评测记录」补渲染的 1.5 秒等待在极慢机器上可能插出重复行。
+
+模板覆盖的回退手段：删掉 `templates/partials/{nav,problem_sidebar_normal}.html`
+即退回「只有后端功能」，拉题与提交接口不受影响。
+
+打包务必 `tar --exclude='.git' --exclude='node_modules'`（v1.1.0/v1.1.1 漏了，打进过整个仓库）。
