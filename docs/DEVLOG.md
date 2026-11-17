@@ -736,3 +736,51 @@ case 'SCRATCHPAD_UI_TOGGLE_VISIBILITY':
 
 `/record?fullStatus=true&pid=<docId>` 返回的 `rdocs[]` 里是 **`memory`（KB）/ `time`（ms）**，
 不是 `memoryKb` / `timeMs`。用错字段会渲染成 `-`。
+
+## 16. 分发兼容性（2026-11-17）
+
+用户要求：插件是**要分发**的，装到别人（Hydro **5.0.7**）的 OJ 上不能影响人家原有的东西。
+
+### 结论：已在独立实例实测 5.0.7 + ui-default 4.58.5
+
+起了一个隔离的 5.0.7 实例（独立 mongo、端口 8899、独立 data），装插件后逐项验证：
+
+| 项 | 结果 |
+| --- | --- |
+| 插件加载 | `apply plugin ... scope luogu-import`，无报错 |
+| 顶部导航 | 原 7 项不变 + 「第三方账号」插在「评测记录」前，「评测记录」**保留** |
+| `/manage/luogu`、config / tags / jobs | 200 |
+| 导入 P1001 | 成功，docId=2，题面 zh/en |
+| 题目页 | 200，6 处「提交到 Luogu」、4 处 scratchpad 注入 |
+| `/luogu/account`、`/luogu/submit/P1001` | 200 |
+| 删题 dryRun | 只列插件导入的 P1001，**不含** Hydro 自带 P1000 |
+
+模板一致性：`nav.html` 与 `problem_sidebar_normal.html` 在 `ui-default` **4.58.5 与 4.59.1 之间完全相同**，
+所以覆盖不会错位。插件只依赖 `hydrooj` 的 `Context / Handler / Logger / ObjectId / PRIV /
+ProblemModel / RecordModel / SettingModel / STATUS / STATUS_TEXTS / ValidationError / nanoid /
+StorageService / _`，5.0.7 全部具备。
+
+### 修掉的三处分发隐患（v1.1.2）
+
+1. **`nav.html` 无条件隐藏「评测记录」** —— 这是开发者的个人偏好，不该发给别人。
+   改为默认与上游逐字一致，只有 `luogu-import.hideRecordNav=true` 才隐藏。
+2. **`cleanup` 按题号形态删题** —— `looksLikeLuoguPid` 会把 Hydro 自带的演示题
+   `P1000` 也算进去，实测出现在删除清单里。改为只删 `luogu.problems` **登记过**的题
+   （即插件真的导入过的），另加显式 `keep` + 默认 `dryRun` + `confirm:"DELETE"` 三道闸。
+3. **`injectUI` 的 `before` 锚点写死 `record_main`** —— 对方若没有该导航项会退化到末尾。
+   改为按 `record_main → ranking → discussion_main → homepage` 依次兜底。
+
+### 发现的上游问题：CLI 脚本一定查不到
+
+`hydrooj cli script luoguImport ...` 在 **5.0.7 和 5.1.0 上都不可用**。
+`src/entry/cli.ts` 里 `await addon(...)` 之后才 `await cli()`，但 addon 的 `apply()`
+是异步的、`cli()` 先跑完了：实测报 `Script luoguImport not found.` 之后，
+同一进程里 `global.Hydro.script` 才出现 `luoguImport`。
+
+所以插件注册的 CLI 脚本注定用不了，**README 已改为推荐后台页面 `/manage/luogu`**。
+排查时用 `hydrooj cli execute "console.log(Object.keys(global.Hydro.script))"` 可以直接看注册表。
+
+### 版本
+
+v1.1.2 已发布，附 `luogu-import-1.1.2.tar.gz`（95326 B，28 个文件，已排除 `.git`）。
+打包命令必须带 `--exclude='.git' --exclude='node_modules'`，否则会打进整个仓库（v1.1.0/v1.1.1 犯过）。
