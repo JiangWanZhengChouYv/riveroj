@@ -878,3 +878,51 @@ v1.1.2 已发布，附 `luogu-import-1.1.2.tar.gz`（95326 B，28 个文件，�
 - 规则：新功能进位基准版本（修订号回 1）；修 bug 基准不变、括号 +1。
 
 1.2.0(1) 收进了 1.1.1～1.1.6 全部修复与既有功能（拉题 / 提交 / 历史 / 反算 / 范围模型）。
+
+## 17. 安全加固（2026-11-18）
+
+用户问「这个 Hydro 现在配置会被攻击吗」。实测发现**三个真实弱点**，已全部修复。
+
+### 弱点 1：8889 绑在 0.0.0.0，局域网可绕过 Cloudflare 直连
+
+`docker-compose.yml` 里是 `"0.0.0.0:8889:8888"`，实测 `http://192.168.3.241:8889/` 返回 200。
+局域网内任何设备都能直连 origin，**完全绕过 CF 的 WAF / 限流 / HTTPS / 缓存规则**。
+
+已改为 `"127.0.0.1:8889:8888"`。验证：`lsof` 只剩 `127.0.0.1:8889`，
+LAN 直连变 502，公网经 Tunnel 仍 200。
+
+### 弱点 2：三个账号都是默认弱口令
+
+| 账号 | 原密码 | 权限 |
+| --- | --- | --- |
+| `JWZCY` (uid 2) | `Hydro123` | superadmin（priv=-1） |
+| `JiangWanZCY` (uid 3) | `Hydro123` | superadmin（priv=-1） |
+| `hydro` (uid 1) | `Hydro7890` | 含 setJudge |
+
+`Hydro123` 这种口令配 `superadmin` + 公网可达，等于把站点送人。
+已全部换成 20 位随机密码，存在 `data/backend/CREDENTIALS.txt`（600，`data/` 已 gitignore）。
+验证：旧密码返回「密码错误」，新密码 302 + 管理页 200。
+
+**注意**：`backend/entrypoint.sh` 里仍写着创建账号时用 `Hydro123` / `Hydro7890`。
+那是全新部署时的初始口令，部署完必须立刻改。待办：把 entrypoint 改成随机生成并打印。
+
+### 弱点 3：登录限流 5 次/60 秒偏宽
+
+原设置允许每小时试 300 次、每月 21 万次，对弱口令够了。
+已设 `limit.login=3`（`hydrooj cli system set limit.login 3`）。
+
+### 实测无问题的项
+
+- 未登录访问 `/manage/*`、`/luogu/*`：返回 `{"url":"/login?redirect=..."}`，**零数据泄露**
+- `judge:5050`、`mongo:27017` 均未对外暴露
+- 限流命中时返回 403 + 「Too frequent operations of user_login_id (limit: N operations in 60 seconds)」
+- CSRF 有效：无 Referer 的跨站 POST /register 未产生垃圾账号（用户数仍为 4）
+
+### 剩余风险（未处理，需人工决策）
+
+- **共享静态 session key**（`session.keys` 单值硬编码）。多实例或密钥泄露时需要轮换，
+  否则所有会话可被伪造；轮换会让全部用户掉线。
+- **注册页 `/register` 返回 200**。实测无 CSRF 无法注册成功，但配置允许时会开放注册，
+  建议按需关闭。
+- **无 CF WAF 规则 / 无 Bot Fight Mode**。目前完全依赖 Hydro 自身的限流。
+- **`hydro` 账号含 setJudge 且口令曾泄露在 AGENTS.md 历史里**（已改，但若仓库历史公开过需注意）。

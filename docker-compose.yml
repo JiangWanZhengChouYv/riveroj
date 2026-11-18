@@ -30,7 +30,9 @@ services:
       - ./public:/root/public
       - ./addons:/root/.hydro/addons:ro
     ports:
-      - "0.0.0.0:8889:8888"
+      # 只绑回环：公网访问一律走 Cloudflare Tunnel（cloudflared → 127.0.0.1:8889）。
+      # 之前绑 0.0.0.0 时局域网内任何设备可直连，完全绕过 CF 的 WAF/限流/HTTPS。
+      - "127.0.0.1:8889:8888"
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8888/status', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 10s

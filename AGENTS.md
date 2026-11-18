@@ -5,7 +5,8 @@
 用 Docker Compose 跑的 **HydroOJ v5.1.0** 实例，站点名 **RiverOJ**，外加一套自研洛谷插件。
 
 - **本地**：http://127.0.0.1:8889  ·  **公网**：https://oj.mz0520.de5.net
-- **账号**：`JWZCY` / `Hydro123`（uid 2，superadmin，用于所有测试）；`hydro` / `Hydro7890`（uid 1，评测机）
+- **账号**：见 `data/backend/CREDENTIALS.txt`（已改为强随机密码，不得写进本文件或任何会提交的地方）
+  - `JWZCY`（uid 2，superadmin，用于所有测试）、`hydro`（uid 1，评测机）、`JiangWanZCY`（uid 3，superadmin）
 - **容器**：`dev-oj-backend`、`dev-oj-judge`、`dev-oj-mongo`（compose project `hydro-dev`）
 
 三个 Git 仓库，插件各自独立、都是 Public：
