@@ -834,3 +834,16 @@ v1.1.2 已发布，附 `luogu-import-1.1.2.tar.gz`（95326 B，28 个文件，�
 **排查教训**：`status === running` 不等于在干活。判断任务是否活着看两点：
 `cursor.processed` 是否增长、`heartbeat` 是否更新。日志只保留 400 行，
 早期关键日志会被滚掉，必要时直接查 Mongo 的 `luogu.job.logs`。
+
+### 16.4 洛谷提交「Waiting 不刷新」三连 bug（v1.1.5，2026-11-18）
+
+用户报「评测记录里一直显示 Waiting Luogu」+「刷新完就不显示洛谷记录了」+「没 AC 也显示等待中（小时钟）」。实际是三个独立 bug：
+
+1. **`renderRows()` 只插不更新**：行一旦以 Waiting 插入，后续 upsert 更新了 `records` 数组但 DOM 行永远不变。证据：toast 已显示「评测完成：未通过」而行还停在 Waiting。修复：`data-sig` 内容指纹，变了 `replaceChild`。
+   连带修了行键不一致：`makeRow` 用 `item.rid`（local 是 Hydro ObjectId）盖键，`renderRows` 查找却用外层 `rec.rid`（洛谷 rid），本地行每 500ms 被清理循环删了重建。
+2. **`records` 只活在内存**：刷新即清空，没有恢复入口。修复：轮询终态时缓存进 `luogu.submissions.terminalCache`（不含代码），新增 `GET /luogu/history/:pid`，前端进 IDE 自动恢复 + 未终态行顺手 poll。
+3. **前端 STATUS 表只有 Hydro 码**：洛谷 12=AC、14=未通过，`statusOf(14)` 查不到 fallback 成 `['pending','14']` → 小时钟 + 裸数字。修复：`LUOGU_STYLE` 码表 + 文本优先用后端 `statusText` 中文。
+
+**教训**：洛谷与 Hydro 状态码是两套体系，前端凡是要显示洛谷状态的地方，必须走洛谷码表或直接用后端算好的 `statusText`，别复用 `STATUS` 表。
+
+验证：真实浏览器 P2261 三条历史提交，刷新后 6 行全部恢复且图标/文案正确。
