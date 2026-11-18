@@ -13,7 +13,7 @@
 | 目录 | GitHub | 内容 |
 | --- | --- | --- |
 | `.` | `JiangWanZhengChouYv/riveroj` | Docker 编排、镜像、judge 健康检查、模型训练脚本 |
-| `addons/luogu-import` | `JiangWanZhengChouYv/luogu-import` | 洛谷拉题 / 提交 / 反算（v1.1.6 已发 Release） |
+| `addons/luogu-import` | `JiangWanZhengChouYv/luogu-import` | 洛谷拉题 / 提交 / 反算（1.2.0(1) 已发 Release） |
 | `addons/riveroj-brand` | `JiangWanZhengChouYv/hydro-addon-riveroj-brand` | 站点图标与顶栏 logo |
 
 主仓库 `.gitignore` 里有 `addons/*/`，所以插件源码不在主仓库；**开发新插件不要堆进主仓库**，按 `CONTRIBUTING-ADDONS.md` 的约定另开仓库。
@@ -68,7 +68,7 @@ Docker Compose 三容器编排，backend 暴露 `8889:8888`。`backend/entrypoin
 
 ### 9. 多仓库拆分与发布
 
-从单仓库拆成三个独立仓库，主仓库只留编排。`luogu-import` 打了 v1.0.0 … v1.1.5 / **v1.1.6 Release**，附 `luogu-import-1.1.6.tar.gz`。每个插件 README 开头都有「仅供个人学习使用」声明。插件安装无需改代码，`entrypoint.sh` 扫描 `addons/` 自动注册。
+从单仓库拆成三个独立仓库，主仓库只留编排。`luogu-import` 当前为 **1.2.0(1)**（tag `v1.2.0(1)`），附 `luogu-import-1.2.0(1).tar.gz`。版本号规则：基准版本(修订号)，修 bug 只加括号。每个插件 README 开头都有「仅供个人学习使用」声明。插件安装无需改代码，`entrypoint.sh` 扫描 `addons/` 自动注册。
 
 ### 10. 公网访问与 Cloudflare 缓存
 
