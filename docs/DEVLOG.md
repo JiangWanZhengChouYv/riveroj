@@ -987,3 +987,52 @@ cloudflared 会自动选最近可用区域，当前日本池不可用才回落�
    但需要公网 IP、要开端口、且要注意别暴露 8889（见 §17）。
 3. **给 `/` 等 HTML 不再回源**——不可行，页面按登录态渲染，缓存会串号。
 4. Argo 智能路由（付费）可绕过劣质中转，但当前这是 Free 计划。
+
+### 18.1 「提交一直 Waiting」的真正原因：主 JS 被截断（2026-11-22）
+
+用户报提交后一直 Waiting。排查后发现**根本不是插件逻辑问题**，
+而是页面的 `hydro-4.59.1.js` 经常加载不完整：
+
+| 来源 | 结果 |
+| --- | --- |
+| 源站 `127.0.0.1:8889` | 249037 B，0.004 s，**永远完整** |
+| 公网经隧道 | **137348 B 就断**（HTTP 仍返回 200），或 60 s 超时 |
+| 公网重复 3 次 | 249037 / 0 / 249037 —— **间歇性截断** |
+
+主 JS 没加载完 → 页面停留在 `class="...nojs"` → 「进入在线编程模式」点不了、
+`installButton()` 不执行、按钮没有 click 绑定、`poll()` 从不启动。
+用户看到的「提交一直 Waiting」只是这个的**表象**。
+
+**判定依据**（可复用）：在页面里查 `window.__luoguScratchpadInstalled`。
+为 `false` 但 DOM 里存在该脚本块 ⇒ 脚本没执行完，先怀疑 JS 加载，
+不要去查提交/轮询逻辑。也可以用
+`curl -o /dev/null -w '%{size_download}'` 比对源站与公网的文件字节数。
+
+### 18.2 隧道配置的三次尝试与结论
+
+| 配置 | 大文件结果 |
+| --- | --- |
+| 默认 QUIC | 54 KB/s，1 MB CSS 要 20 s，频繁断 |
+| `protocol: http2` | 仍 3 次里 2 次超时 |
+| `proxy-url: http://127.0.0.1:7890` + `http2` | **3 次全完整**，8 s 左右 |
+
+**关键对照**：走本地代理直接下 `hydro-4.59.1.js`，249037 B **1.2–2.0 s**；
+不走代理则 60 s 截断。说明用户的代理出口线路比直连 CF 好得多。
+
+**但要注意**：`proxy-url` 让隧道依赖代理进程存活（代理挂了 OJ 就挂），
+且 QUIC 不支持 proxy，必须同时写 `protocol: http2`。这是权衡后的选择。
+
+当前 `~/.cloudflared/config.yml`：
+
+```yaml
+tunnel: 29664482-...
+protocol: http2                    # proxy-url 不支持 quic
+credentials-file: ~/.cloudflared/....json
+proxy-url: http://127.0.0.1:7890   # 走本地代理，线路明显更好
+ingress:
+  - hostname: oj.mz0520.de5.net
+    service: http://127.0.0.1:8889
+  - service: http_status:404
+```
+
+备份文件：`config.yml.bak`（原始）、`config.yml.http2.bak`（纯 http2 无代理）。
