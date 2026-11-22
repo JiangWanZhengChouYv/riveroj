@@ -1036,3 +1036,41 @@ ingress:
 ```
 
 备份文件：`config.yml.bak`（原始）、`config.yml.http2.bak`（纯 http2 无代理）。
+
+### 18.3 「提交一直 Waiting」真正根因：评测机密码没跟着改（2026-11-22）
+
+**这是 §17 安全加固留下的坑，我负全责。**
+
+§17 把 `hydro` 账号密码从 `Hydro7890` 改成随机值，但评测机的配置文件里
+还写着旧密码，于是：
+
+```
+dev-oj-judge  unhealthy   FailingStreak=227
+Error: Forbidden   "Invalid password for user ["hydro"]"
+```
+
+评测机连不上 backend → 任何提交都停在 **Waiting** 永不判题。
+healthcheck 还会不停杀掉 `hydrojudge` 进程重启，看起来像「评测机一直不工作」。
+
+**修复**：把 `data/backend/CREDENTIALS.txt` 里的新密码同步进
+评测机容器内的 `/root/.hydro/judge.yaml`（注意这份是**镜像内烘焙**的运行时配置，
+不是仓库里的 `judge/judge.yaml`）：
+
+```bash
+NEWPW=$(awk '/^hydro/{print $2}' data/backend/CREDENTIALS.txt)
+docker exec dev-oj-judge sh -c "sed -i 's/^    password: .*/    password: $NEWPW/' /root/.hydro/judge.yaml"
+docker compose restart oj-judge
+```
+
+验证：`dev-oj-judge` 变 healthy、sandbox `online`、`/status` 出现 Online；
+新提交 `status=1 score=100`，不再卡 Waiting。
+
+### 18.4 两条必须记住的运维铁律
+
+1. **改任何账号密码，必须同步所有引用该账号的地方。**
+   本项目里 `hydro` 被评测机使用，改完必须同步 `judge.yaml`，否则整个判题瘫痪。
+2. **Hydro 的登录限流是硬编码的 `limitRate('user_login_id', 60, 5)`
+   （`src/handler/user.ts:90`），不读 `limit.login` 系统设置。**
+   评测机每次重连都要登录一次，限流窗口内频繁重启会被自己挡住。
+   排查「Too frequent operations of user_login_id」时改系统设置没用，要减少重启次数/
+   或直接修掉凭据错误。`limit.login` 只影响前台用户登录。
