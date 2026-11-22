@@ -926,3 +926,64 @@ LAN 直连变 502，公网经 Tunnel 仍 200。
   建议按需关闭。
 - **无 CF WAF 规则 / 无 Bot Fight Mode**。目前完全依赖 Hydro 自身的限流。
 - **`hydro` 账号含 setJudge 且口令曾泄露在 AGENTS.md 历史里**（已改，但若仓库历史公开过需注意）。
+
+## 18. 访问速度优化与隧道故障修复（2026-11-22）
+
+用户报「还是太慢」。排查发现**先有故障、后有慢**，两件事都得说。
+
+### 一、隧道已经挂了（这是「慢到打不开」的真正原因）
+
+实测连续 20 次请求 **0 次成功**。两个 `cloudflared` 进程的 ESTABLISHED 连接数都是 0。
+
+根因：`~/Library/LaunchAgents/com.cloudflare.cloudflared.plist` 的
+`ProgramArguments` 只有 `/opt/homebrew/bin/cloudflared`，**缺少 `tunnel run`**。
+cloudflared 启动后直接打印 `use \`cloudflared tunnel run\` to start tunnel ...` 并以退出码 1 退出，
+`KeepAlive` 每 5 秒再拉起一次 —— 一直在无效重启，还和手动启动的实例抢同一条 Tunnel。
+
+另外系统级 `/Library/LaunchDaemons/com.cloudflare.cloudflared.plist` 也存在
+（`launchctl list` 显示退出码 1，需要 sudo 才能改，本次未处理）。
+
+修复：plist 补全为
+`cloudflared tunnel --config ~/.cloudflared/config.yml --no-autoupdate run oj`
+（注意：`tunnel` 子命令必须在 `--config` **之前**，否则参数不被识别）。
+验证：连续 5 次请求全部 200，隧道建立 168 条 QUIC 连接。
+
+### 二、隧道会继承 shell 的 7890 代理（已修）
+
+`launchctl` 启动的进程若从终端手动拉起会继承 `https_proxy=http://127.0.0.1:7890`，
+变成 `CF → 本地代理 → 出国 → CF` 的绕路。已在 plist 里加
+`EnvironmentVariables.NO_PROXY=*` 强制直连。
+验证：该 PID 上指向 `:7890` 的连接数为 0。
+
+### 三、为什么还是慢：跨境绕路 + 高丢包（非配置问题）
+
+| 指标 | 数值 |
+| --- | --- |
+| 源站本机 TTFB | **10 ms** |
+| 公网 TTFB | 1400–2200 ms |
+| 静态资源（CF HIT，不碰源站） | 0.3–0.7 s TTFB，**1MB CSS 要 20 秒，54 KB/s** |
+| 到 CF 边缘（`104.21.18.251`）ping 丢包 | **50–66%**，RTT 290 ms |
+| 到 `1.1.1.1` ping 丢包 | 5% |
+
+**关键**：`cf-cache-status: HIT` 的文件也慢，说明瓶颈**不在我们的服务器**，
+而在「CF 边缘 → 用户」以及「CF 边缘 → 本机隧道」这两段。
+
+隧道两端位置不匹配：用户访问的 CF 边缘是 **NRT（东京）**，
+但 Tunnel 注册在 **lax08/09/11/13（洛杉矶）**。数据走
+`用户 → 东京 → 洛杉矶 → 本机 → 洛杉矶 → 东京 → 用户`，绕了半个地球。
+cloudflared 会自动选最近可用区域，当前日本池不可用才回落到美西。
+
+已排除的项（都正常）：
+
+- 源站性能：本机 TTFB 10 ms，`theme-4.59.1.css` 本地 75 MB/s
+- 压缩：gzip 与 **Brotli 均生效**，1MB CSS 压到 169 KB
+- 缓存：静态资源 `cf-cache-status: HIT`，Cache Rules 正常
+- 容器负载：backend CPU 4%，judge 3%，mongo 0.5%
+
+### 提速可选方案（按性价比排序）
+
+1. **换一条到 CF 更干净的线路**（换宽带 / 换出口节点）。50% 丢包下任何服务器优化都无效。
+2. **不开 Tunnel，改用公网 IP + 源站直连 + CF 橙云**。少一段隧道，
+   但需要公网 IP、要开端口、且要注意别暴露 8889（见 §17）。
+3. **给 `/` 等 HTML 不再回源**——不可行，页面按登录态渲染，缓存会串号。
+4. Argo 智能路由（付费）可绕过劣质中转，但当前这是 Free 计划。
